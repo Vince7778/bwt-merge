@@ -9,7 +9,7 @@ type BWT = Vec<u8>;
 pub fn run_bwt(input: &Vec<u8>) -> BWT {
     let sa = divsufsort64(&input).unwrap();
 
-    let mut bwt = Vec::new();
+    let mut bwt = Vec::with_capacity(input.len());
     for i in 0..sa.len() {
         if sa[i] == 0 {
             bwt.push(input[input.len() - 1]);
@@ -65,7 +65,7 @@ pub fn bwt_merge(bwt0: &BWT, bwt1: &BWT) -> BWT {
     }
 
     // construct bwt
-    let mut bwt = Vec::new();
+    let mut bwt = Vec::with_capacity(interleave.len());
     let mut ind0 = 0;
     let mut ind1 = 0;
     for i in 0..interleave.len() {

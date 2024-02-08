@@ -24,11 +24,15 @@ fn random_strings(n: usize, len: usize, alpha: &[u8]) -> Vec<Vec<u8>> {
     strings
 }
 
-fn random_concat(n: usize, len: usize, alpha: &[u8]) -> Vec<u8> {
-    let strings = random_strings(n, len, alpha);
-    let mut concat = strings.join(&b'$');
+fn merge_strs(strs: Vec<Vec<u8>>) -> Vec<u8> {
+    let mut concat = strs.join(&b'$');
     concat.push(b'$');
     concat
+}
+
+fn random_concat(n: usize, len: usize, alpha: &[u8]) -> Vec<u8> {
+    let strings = random_strings(n, len, alpha);
+    merge_strs(strings)
 }
 
 const N: usize = 10000;
@@ -49,11 +53,25 @@ fn merge_test(bencher: Bencher) {
 // worst case performance, where strings are duplicated
 #[divan::bench]
 fn repetitive_merge_test(bencher: Bencher) {
-    let str = random_concat(N/2, LEN, ALPHABET);
+    let strs = random_strings(N/2, LEN, ALPHABET);
+    let mut rng = StdRng::seed_from_u64(123);
 
-    let bwt = bwt::run_bwt(&str);
+    // modify last character
+    let str_mod = strs.clone().into_iter().map(|x| {
+        let mut x = x.clone();
+        let rand_char = ALPHABET[rng.gen_range(0..ALPHABET.len())];
+        let x_ind = x.len() - 1;
+        x[x_ind] = rand_char;
+        x
+    }).collect();
+
+    let str0 = merge_strs(strs);
+    let str1 = merge_strs(str_mod);
+
+    let bwt0 = bwt::run_bwt(&str0);
+    let bwt1 = bwt::run_bwt(&str1);
     bencher.bench_local(move || {
-        bwt::bwt_merge(black_box(&bwt), black_box(&bwt));
+        bwt::bwt_merge(black_box(&bwt0), black_box(&bwt1));
     })
 }
 
