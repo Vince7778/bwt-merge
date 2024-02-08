@@ -2,8 +2,6 @@ use clap::Parser;
 use std::path::PathBuf;
 use std::io::{self, BufRead};
 use std::time::Instant;
-use rand::rngs::StdRng;
-use rand::{Rng, SeedableRng};
 use bwt_merge::bwt::{run_bwt, bwt_merge};
 
 #[derive(Parser)]
@@ -30,16 +28,14 @@ fn main() {
         }
     }
 
-    // split input into two lists randomly
-    let mut rng = StdRng::seed_from_u64(123);
-
+    // split input into two lists
     let mut input0 = Vec::new();
     let mut input1 = Vec::new();
-    for line in input_lines.clone() {
-        if rng.gen_bool(0.5) {
-            input0.push(line);
+    for (i, line) in input_lines.iter().enumerate() {
+        if i % 2 == 0 {
+            input0.push(line.clone());
         } else {
-            input1.push(line);
+            input1.push(line.clone());
         }
     }
 
@@ -50,16 +46,16 @@ fn main() {
     input1_concat.push(b'$');
 
     
-    let bwt0 = run_bwt(input0_concat);
-    let bwt1 = run_bwt(input1_concat);
+    let bwt0 = run_bwt(&input0_concat);
+    let bwt1 = run_bwt(&input1_concat);
 
     // custom bwt merge
     // note: bwt build time not included
     let bwt_merge_start = Instant::now();
-    let bwt = bwt_merge(bwt0, bwt1);
+    let bwt = bwt_merge(&bwt0, &bwt1);
     let bwt_merge_duration = bwt_merge_start.elapsed();
     let bwt_str = String::from_utf8(bwt).unwrap();
-    //println!("{}", bwt_str);
+    println!("{}", bwt_str);
     println!("bwt merge time: {:?}", bwt_merge_duration);
     
     let mut bwt_manual = input_lines.join(&b'$');
@@ -67,9 +63,9 @@ fn main() {
 
     // lib bwt construction
     let bwt_lib_start = Instant::now();
-    let test_bwt = run_bwt(bwt_manual);
+    let test_bwt = run_bwt(&bwt_manual);
     let bwt_lib_duration = bwt_lib_start.elapsed();
     let test_bwt_str = String::from_utf8(test_bwt).unwrap();
-    //println!("{}", test_bwt_str);
+    println!("{}", test_bwt_str);
     println!("bwt lib time: {:?}", bwt_lib_duration);
 }
