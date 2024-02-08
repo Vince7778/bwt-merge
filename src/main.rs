@@ -40,32 +40,32 @@ fn main() {
     }
 
     // concatenate inputs separated by newline
-    let mut input0_concat = input0.join(&b'$');
-    input0_concat.push(b'$');
-    let mut input1_concat = input1.join(&b'$');
-    input1_concat.push(b'$');
+    let mut input0_concat = input0.join(&b'\n');
+    input0_concat.push(b'\n');
+    let mut input1_concat = input1.join(&b'\n');
+    input1_concat.push(b'\n');
 
     
-    let bwt0 = run_bwt(&input0_concat);
-    let bwt1 = run_bwt(&input1_concat);
+    let data0 = run_bwt(&input0_concat);
+    let data1 = run_bwt(&input1_concat);
 
     // custom bwt merge
     // note: bwt build time not included
     let bwt_merge_start = Instant::now();
-    let bwt = bwt_merge(&bwt0, &bwt1);
+    let data_merge = bwt_merge(&data0, &data1);
     let bwt_merge_duration = bwt_merge_start.elapsed();
-    let bwt_str = String::from_utf8(bwt).unwrap();
+    let bwt_str = String::from_utf8(data_merge.0).unwrap();
     println!("{}", bwt_str);
     println!("bwt merge time: {:?}", bwt_merge_duration);
     
-    let mut bwt_manual = input_lines.join(&b'$');
-    bwt_manual.push(b'$');
+    let mut bwt_manual = input_lines.join(&b'\n');
+    bwt_manual.push(b'\n');
 
     // lib bwt construction
     let bwt_lib_start = Instant::now();
-    let test_bwt = run_bwt(&bwt_manual);
+    let test_data = run_bwt(&bwt_manual);
     let bwt_lib_duration = bwt_lib_start.elapsed();
-    let test_bwt_str = String::from_utf8(test_bwt).unwrap();
+    let test_bwt_str = String::from_utf8(test_data.0).unwrap();
     println!("{}", test_bwt_str);
     println!("bwt lib time: {:?}", bwt_lib_duration);
 }

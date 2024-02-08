@@ -25,8 +25,8 @@ fn random_strings(n: usize, len: usize, alpha: &[u8]) -> Vec<Vec<u8>> {
 }
 
 fn merge_strs(strs: Vec<Vec<u8>>) -> Vec<u8> {
-    let mut concat = strs.join(&b'$');
-    concat.push(b'$');
+    let mut concat = strs.join(&b'\n');
+    concat.push(b'\n');
     concat
 }
 
@@ -43,10 +43,10 @@ fn merge_test(bencher: Bencher) {
     let str0 = random_concat(N/2, LEN, ALPHABET);
     let str1 = random_concat(N/2, LEN, ALPHABET);
 
-    let bwt0 = bwt::run_bwt(&str0);
-    let bwt1 = bwt::run_bwt(&str1);
+    let data0 = bwt::run_bwt(&str0);
+    let data1 = bwt::run_bwt(&str1);
     bencher.bench_local(move || {
-        bwt::bwt_merge(black_box(&bwt0), black_box(&bwt1));
+        bwt::bwt_merge(black_box(&data0), black_box(&data1));
     })
 }
 
@@ -68,10 +68,10 @@ fn repetitive_merge_test(bencher: Bencher) {
     let str0 = merge_strs(strs);
     let str1 = merge_strs(str_mod);
 
-    let bwt0 = bwt::run_bwt(&str0);
-    let bwt1 = bwt::run_bwt(&str1);
+    let data0 = bwt::run_bwt(&str0);
+    let data1 = bwt::run_bwt(&str1);
     bencher.bench_local(move || {
-        bwt::bwt_merge(black_box(&bwt0), black_box(&bwt1));
+        bwt::bwt_merge(black_box(&data0), black_box(&data1));
     })
 }
 
@@ -90,10 +90,10 @@ fn merge_test_small(bencher: Bencher) {
     let str0 = random_concat(N/2, LEN, ALPHABET_SMALL);
     let str1 = random_concat(N/2, LEN, ALPHABET_SMALL);
 
-    let bwt0 = bwt::run_bwt(&str0);
-    let bwt1 = bwt::run_bwt(&str1);
+    let data0 = bwt::run_bwt(&str0);
+    let data1 = bwt::run_bwt(&str1);
     bencher.bench_local(move || {
-        bwt::bwt_merge(black_box(&bwt0), black_box(&bwt1));
+        bwt::bwt_merge(black_box(&data0), black_box(&data1));
     })
 }
 
