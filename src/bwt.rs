@@ -1,3 +1,5 @@
+use std::collections::BTreeSet;
+
 use bit_vec::BitVec;
 use libdivsufsort_rs::divsufsort64;
 
@@ -101,7 +103,7 @@ pub fn bwt_merge(bwt0_d: &BWTData, bwt1_d: &BWTData) -> BWTData {
 
     // assumes the number of lines in bwt0 is the number of newlines
     let num_newlines = counts0[b'\n' as usize];
-
+    
     for i in 0..interleave.len() {
         if interleave[i] {
             bwt.push(bwt1[ind1]);
@@ -124,7 +126,7 @@ pub struct FMBlock {
 }
 
 // Compute the FM-index of a BWT.
-pub fn fm_index(data: BWTData) -> Vec<FMBlock> {
+pub fn fm_index(data: &BWTData) -> Vec<FMBlock> {
     let (bwt, _, all_counts) = data;
     let num_blocks = (bwt.len() + BLOCK_SIZE - 1) / BLOCK_SIZE;
     let mut blocks: Vec<FMBlock> = Vec::with_capacity(num_blocks);
@@ -163,7 +165,7 @@ pub fn fm_index(data: BWTData) -> Vec<FMBlock> {
 }
 
 // Run LF-mapping on the index
-pub fn fm_query(blocks: &Vec<FMBlock>, ind: usize, chr: u8) -> usize {
+fn lf_map(blocks: &Vec<FMBlock>, ind: usize, chr: u8) -> usize {
     let block_ind = ind / BLOCK_SIZE;
     let ind = ind % BLOCK_SIZE;
 
@@ -175,4 +177,38 @@ pub fn fm_query(blocks: &Vec<FMBlock>, ind: usize, chr: u8) -> usize {
     }
 
     return blocks[block_ind].c_arr[chr as usize] + offset;
+}
+
+// Search FM-index for a pattern
+// Returns (start, end) indices of the pattern in the BWT, end is exclusive
+pub fn substring_search(blocks: &Vec<FMBlock>, pattern: &Vec<u8>, n: usize) -> Option<(usize, usize)> {
+    let mut start = 0;
+    let mut end = n;
+    for i in (0..pattern.len()).rev() {
+        let chr = pattern[i];
+        start = lf_map(blocks, start, chr);
+        end = lf_map(blocks, end, chr);
+        if start > end {
+            return None;
+        }
+    }
+
+    Some((start, end))
+}
+
+// Get all matching line indices from the BWT
+pub fn get_matching_lines(bwt_data: &BWTData, blocks: &Vec<FMBlock>, pattern: &Vec<u8>) -> BTreeSet<usize> {
+    let (bwt, line_ind, _) = bwt_data;
+    let n = bwt.len();
+    let res = substring_search(blocks, pattern, n);
+    if res.is_none() {
+        return BTreeSet::new();
+    }
+
+    let (start, end) = res.unwrap();
+    let mut lines: BTreeSet<usize> = BTreeSet::new();
+    for i in start..end {
+        lines.insert(line_ind[i]);
+    }
+    lines
 }

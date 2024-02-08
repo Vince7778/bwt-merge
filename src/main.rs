@@ -2,7 +2,7 @@ use clap::Parser;
 use std::path::PathBuf;
 use std::io::{self, BufRead};
 use std::time::Instant;
-use bwt_merge::bwt::{run_bwt, bwt_merge};
+use bwt_merge::bwt::{bwt_merge, fm_index, get_matching_lines, run_bwt};
 
 #[derive(Parser)]
 struct Cli {
@@ -32,7 +32,7 @@ fn main() {
     let mut input0 = Vec::new();
     let mut input1 = Vec::new();
     for (i, line) in input_lines.iter().enumerate() {
-        if i % 2 == 0 {
+        if i < input_lines.len() / 2 {
             input0.push(line.clone());
         } else {
             input1.push(line.clone());
@@ -44,7 +44,6 @@ fn main() {
     input0_concat.push(b'\n');
     let mut input1_concat = input1.join(&b'\n');
     input1_concat.push(b'\n');
-
     
     let data0 = run_bwt(&input0_concat);
     let data1 = run_bwt(&input1_concat);
@@ -54,8 +53,9 @@ fn main() {
     let bwt_merge_start = Instant::now();
     let data_merge = bwt_merge(&data0, &data1);
     let bwt_merge_duration = bwt_merge_start.elapsed();
-    let bwt_str = String::from_utf8(data_merge.0).unwrap();
-    println!("{}", bwt_str);
+    let bwt_str = String::from_utf8(data_merge.0.clone()).unwrap();
+    //println!("{}", bwt_str);
+    //println!("{:?}", data_merge.1);
     println!("bwt merge time: {:?}", bwt_merge_duration);
     
     let mut bwt_manual = input_lines.join(&b'\n');
@@ -65,7 +65,21 @@ fn main() {
     let bwt_lib_start = Instant::now();
     let test_data = run_bwt(&bwt_manual);
     let bwt_lib_duration = bwt_lib_start.elapsed();
-    let test_bwt_str = String::from_utf8(test_data.0).unwrap();
-    println!("{}", test_bwt_str);
+    let test_bwt_str = String::from_utf8(test_data.0.clone()).unwrap();
+    //println!("{}", test_bwt_str);
+    //println!("{:?}", test_data.1);
     println!("bwt lib time: {:?}", bwt_lib_duration);
+
+    // build fm indices
+    let merge_index = fm_index(&data_merge);
+    let test_index = fm_index(&test_data);
+
+    // try some queries
+    let query_str = "o";
+    println!("Querying for string '{}'", query_str);
+    let query = query_str.as_bytes().to_vec();
+    let merge_res = get_matching_lines(&data_merge, &merge_index, &query);
+    let test_res = get_matching_lines(&test_data, &test_index, &query);
+    println!("merge res: {:?}", merge_res);
+    println!("test res: {:?}", test_res);
 }
