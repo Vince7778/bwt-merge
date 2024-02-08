@@ -9,6 +9,15 @@ struct Cli {
     /// Input file
     #[arg(short, long, value_name="FILE")]
     input_file: Option<PathBuf>,
+
+    /// Whether to print BWT
+    /// Default: false
+    #[arg(short, long, default_value_t=false)]
+    print_bwt: bool,
+
+    /// Query string
+    #[arg(short, long, value_name="STRING")]
+    query: Option<String>,
 }
 
 fn main() {
@@ -54,8 +63,9 @@ fn main() {
     let data_merge = bwt_merge(&data0, &data1);
     let bwt_merge_duration = bwt_merge_start.elapsed();
     let bwt_str = String::from_utf8(data_merge.0.clone()).unwrap();
-    //println!("{}", bwt_str);
-    //println!("{:?}", data_merge.1);
+    if cli.print_bwt {
+        println!("{}", bwt_str);
+    }
     println!("bwt merge time: {:?}", bwt_merge_duration);
     
     let mut bwt_manual = input_lines.join(&b'\n');
@@ -66,8 +76,9 @@ fn main() {
     let test_data = run_bwt(&bwt_manual);
     let bwt_lib_duration = bwt_lib_start.elapsed();
     let test_bwt_str = String::from_utf8(test_data.0.clone()).unwrap();
-    //println!("{}", test_bwt_str);
-    //println!("{:?}", test_data.1);
+    if cli.print_bwt {
+        println!("{}", test_bwt_str);
+    }
     println!("bwt lib time: {:?}", bwt_lib_duration);
 
     // build fm indices
@@ -75,7 +86,7 @@ fn main() {
     let test_index = fm_index(&test_data);
 
     // try some queries
-    let query_str = "o";
+    let query_str = cli.query.unwrap_or("a".to_string());
     println!("Querying for string '{}'", query_str);
     let query = query_str.as_bytes().to_vec();
     let merge_res = get_matching_lines(&data_merge, &merge_index, &query);
