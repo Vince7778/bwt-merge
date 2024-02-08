@@ -106,12 +106,28 @@ fn rebuild_test_small(bencher: Bencher) {
     })
 }
 
-/*
+// build fm index
 #[divan::bench]
-fn scratch_test(bencher: Bencher) {
-    let strings = random_strings(N, LEN);
+fn fm_index_test(bencher: Bencher) {
+    let str = random_concat(N, LEN, ALPHABET);
+
+    let data = bwt::run_bwt(&str);
     bencher.bench_local(move || {
-        bwt::scratch_build_bwt(&strings);
+        bwt::fm_index(black_box(&data));
     })
 }
-*/
+
+// query fm index n times
+#[divan::bench]
+fn query_test(bencher: Bencher) {
+    let str = random_concat(N, LEN, ALPHABET);
+    let query_strs = random_strings(N, 3, ALPHABET);
+
+    let data = bwt::run_bwt(&str);
+    let index = bwt::fm_index(&data);
+    bencher.bench_local(move || {
+        for query in query_strs.iter() {
+            bwt::get_matching_lines(&data, &index, &query);
+        }
+    })
+}
