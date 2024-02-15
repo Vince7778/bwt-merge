@@ -6,6 +6,14 @@ use bwt_merge::bwt::{bwt_merge, fm_index, get_matching_lines, run_bwt};
 
 #[derive(Parser)]
 struct Cli {
+    /// Mode to generate several BWT files
+    #[arg(short, long)]
+    generate: bool,
+
+    /// Mode to test BWT merge on disk
+    #[arg(short, long)]
+    test_disk: bool,
+
     /// Input file
     #[arg(short, long, value_name="FILE")]
     input_file: Option<PathBuf>,
@@ -22,6 +30,20 @@ struct Cli {
 
 fn main() {
     let cli = Cli::parse();
+
+    if cli.generate {
+        let input_file = cli.input_file.unwrap();
+        let output_path = "./data/tests";
+        bwt_merge::bwt_disk::generate_test_files(input_file.to_str().unwrap(), output_path);
+        return;
+    }
+
+    if cli.test_disk {
+        let input_path = "./data/tests";
+        let output_path = "./data/test_out";
+        bwt_merge::bwt_disk::test_merge_disk(input_path, output_path);
+        return;
+    }
     
     let mut input_lines: Vec<Vec<u8>>;
     if let Some(input_file) = cli.input_file {
