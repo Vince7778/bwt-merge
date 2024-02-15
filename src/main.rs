@@ -14,6 +14,10 @@ struct Cli {
     #[arg(short, long)]
     test_disk: bool,
 
+    /// Whether to test rebuild
+    #[arg(short, long)]
+    rebuild: bool,
+
     /// Input file
     #[arg(short, long, value_name="FILE")]
     input_file: Option<PathBuf>,
@@ -41,7 +45,7 @@ fn main() {
     if cli.test_disk {
         let input_path = "./data/tests";
         let output_path = "./data/test_out";
-        bwt_merge::bwt_disk::test_merge_disk(input_path, output_path);
+        bwt_merge::bwt_disk::test_merge_disk(input_path, output_path, cli.test_rebuild);
         return;
     }
     

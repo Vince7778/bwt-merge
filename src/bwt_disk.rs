@@ -208,7 +208,7 @@ pub fn bwt_merge_disk(bwt0_path: &str, bwt1_path: &str, output_path: &str) {
     std::fs::write(format!("{}.counts", output_path), counts.iter().map(|x| x.to_string()).collect::<Vec<String>>().join("\n")).unwrap();
 }
 
-pub fn test_merge_disk(input_path: &str, output_path: &str) {
+pub fn test_merge_disk(input_path: &str, output_path: &str, test_rebuild: bool) {
     let mut test_sizes = SIZES[0..SIZES.len()-1].to_vec();
     test_sizes.push(3719388); // full size
 
@@ -223,16 +223,18 @@ pub fn test_merge_disk(input_path: &str, output_path: &str) {
         let merge_duration = merge_start.elapsed();
         println!("merge time for size {}: {:?}", size, merge_duration);
 
-        // time full rebuild, including i/o times
-        let rebuild_start = std::time::Instant::now();
-        let full_text = std::fs::read(format!("{}/{}_full.txt", input_path, size)).unwrap().to_vec();
-        let full_bwt = run_bwt(&full_text);
-
-        let output_path = format!("{}/{}_merged_naive", output_path, size);
-        std::fs::write(format!("{}.bwt", output_path), full_bwt.0).unwrap();
-        std::fs::write(format!("{}.index", output_path), full_bwt.1.iter().map(|x| x.to_string()).collect::<Vec<String>>().join("\n")).unwrap();
-        std::fs::write(format!("{}.counts", output_path), full_bwt.2.iter().map(|x| x.to_string()).collect::<Vec<String>>().join("\n")).unwrap();
-        let rebuild_duration = rebuild_start.elapsed();
-        println!("rebuild time for size {}: {:?}", size, rebuild_duration);
+        if test_rebuild {
+            // time full rebuild, including i/o times
+            let rebuild_start = std::time::Instant::now();
+            let full_text = std::fs::read(format!("{}/{}_full.txt", input_path, size)).unwrap().to_vec();
+            let full_bwt = run_bwt(&full_text);
+    
+            let output_path = format!("{}/{}_merged_naive", output_path, size);
+            std::fs::write(format!("{}.bwt", output_path), full_bwt.0).unwrap();
+            std::fs::write(format!("{}.index", output_path), full_bwt.1.iter().map(|x| x.to_string()).collect::<Vec<String>>().join("\n")).unwrap();
+            std::fs::write(format!("{}.counts", output_path), full_bwt.2.iter().map(|x| x.to_string()).collect::<Vec<String>>().join("\n")).unwrap();
+            let rebuild_duration = rebuild_start.elapsed();
+            println!("rebuild time for size {}: {:?}", size, rebuild_duration);
+        }
     }
 }
