@@ -45,7 +45,7 @@ fn main() {
     if cli.test_disk {
         let input_path = "./data/tests";
         let output_path = "./data/test_out";
-        bwt_merge::bwt_disk::test_merge_disk(input_path, output_path, cli.test_rebuild);
+        bwt_merge::bwt_disk::test_merge_disk(input_path, output_path, cli.rebuild);
         return;
     }
     
