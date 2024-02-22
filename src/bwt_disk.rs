@@ -1,6 +1,5 @@
-use std::{fs::File, io::{BufRead, Write}};
-
 use bit_vec::BitVec;
+use opendal::{raw::oio::ReadExt, services::Fs, Error, Operator, Reader};
 use rand::seq::SliceRandom;
 
 use crate::bwt::run_bwt;
@@ -48,9 +47,9 @@ pub fn generate_test_files(input_file: &str, output_path: &str) {
             let output_counts_file = format!("{}/{}_{}.counts", output_path, size, ind);
 
             std::fs::write(output_file, bwt.0).unwrap();
-            let index_str = bwt.1.iter().map(|x| x.to_string()).collect::<Vec<String>>().join("\n");
+            let index_str = bwt.1.iter().map(|x| x.to_string()).collect::<Vec<String>>().join("\n") + "\n";
             std::fs::write(output_index_file, index_str).unwrap();
-            let counts_str = bwt.2.iter().map(|x| x.to_string()).collect::<Vec<String>>().join("\n");
+            let counts_str = bwt.2.iter().map(|x| x.to_string()).collect::<Vec<String>>().join("\n") + "\n";
             std::fs::write(output_counts_file, counts_str).unwrap();
         }
 
@@ -79,12 +78,9 @@ pub fn generate_test_files(input_file: &str, output_path: &str) {
 // Size of buffer for reading files
 const BUFFER_SIZE: usize = 1024*1024;
 
-// Compute the interleave of two BWTs, stored on disk.
-// BWT paths should include the .bwt extension
-fn compute_interleave_disk(bwt0_path: &str, bwt1_path: &str, counts: &[usize; 256]) -> BitVec {
-    // get lengths of bwt files
-    let bwt0_len = File::open(bwt0_path).unwrap().metadata().unwrap().len() as usize;
-    let bwt1_len = File::open(bwt1_path).unwrap().metadata().unwrap().len() as usize;
+// Compute the interleave of two BWTs, using opendal Readers
+async fn compute_interleave(bwt0_reader: &mut Reader, bwt1_reader: &mut Reader, lens: (usize, usize), counts: &[usize; 256]) -> Result<BitVec, Error> {
+    let (bwt0_len, bwt1_len) = lens;
 
     // construct character starts array
     let mut starts: [usize; 256] = [0; 256];
@@ -99,14 +95,19 @@ fn compute_interleave_disk(bwt0_path: &str, bwt1_path: &str, counts: &[usize; 25
         interleave.set(i, false);
     }
 
+    let mut interleave_iterations = 0;
+
     loop {
         let mut ind: [usize; 2] = [0, 0];
 
         // reset readers
-        let mut bwt0_reader = std::io::BufReader::with_capacity(BUFFER_SIZE, File::open(bwt0_path).unwrap());
-        let mut bwt1_reader = std::io::BufReader::with_capacity(BUFFER_SIZE, File::open(bwt1_path).unwrap());
-        let mut bwt0 = bwt0_reader.fill_buf().unwrap();
-        let mut bwt1 = bwt1_reader.fill_buf().unwrap();
+        bwt0_reader.seek(std::io::SeekFrom::Start(0)).await?;
+        bwt1_reader.seek(std::io::SeekFrom::Start(0)).await?;
+
+        let mut bwt0 = vec![0u8; BUFFER_SIZE];
+        let mut bwt1 = vec![0u8; BUFFER_SIZE];
+        bwt0_reader.read(&mut bwt0).await?;
+        bwt1_reader.read(&mut bwt1).await?;
 
         let mut offsets = starts.clone();
         let mut new_interleave = BitVec::from_elem(interleave.len(), false);
@@ -117,8 +118,7 @@ fn compute_interleave_disk(bwt0_path: &str, bwt1_path: &str, counts: &[usize; 25
                 ind[1] += 1;
 
                 if ind[1] == BUFFER_SIZE {
-                    bwt1_reader.consume(BUFFER_SIZE);
-                    bwt1 = bwt1_reader.fill_buf().unwrap();
+                    bwt1_reader.read(&mut bwt1).await?;
                     ind[1] = 0;
                 }
             } else {
@@ -126,91 +126,216 @@ fn compute_interleave_disk(bwt0_path: &str, bwt1_path: &str, counts: &[usize; 25
                 ind[0] += 1;
 
                 if ind[0] == BUFFER_SIZE {
-                    bwt0_reader.consume(BUFFER_SIZE);
-                    bwt0 = bwt0_reader.fill_buf().unwrap();
+                    bwt0_reader.read(&mut bwt0).await?;
                     ind[0] = 0;
                 }
             }
         }
+
+        interleave_iterations += 1;
 
         if new_interleave == interleave {
             break;
         }
         interleave = new_interleave;
     }
-    interleave
+
+    println!("interleave iterations: {}", interleave_iterations);
+    Ok(interleave)
+}
+
+// get operator and readers for filesystem
+fn get_operator() -> std::io::Result<Operator> {
+    let mut builder = Fs::default();
+    let current_path = std::env::current_dir()?;
+    builder.root(current_path.to_str().expect("Current path not found"));
+    Ok(Operator::new(builder)?.finish())
+}
+
+async fn get_file_reader(path: &str, operator: &Operator) -> Result<opendal::Reader, opendal::Error> {
+    operator.clone().reader(path).await
+}
+
+async fn read_file_size(path: &str, operator: &Operator) -> Result<usize, opendal::Error> {
+    let len = operator.stat(path).await?.content_length() as usize;
+    Ok(len)
+}
+
+async fn get_file_writer(path: &str, operator: &Operator) -> Result<opendal::Writer, opendal::Error> {
+    operator.clone().writer(path).await
+}
+
+#[derive(Debug)]
+struct IntReadError(String);
+
+impl std::fmt::Display for IntReadError {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl std::error::Error for IntReadError {}
+
+// Read integers from a Reader
+// extra_num is the number formed by the last digits read
+async fn read_ints(reader: &mut Reader, extra_num: usize) -> Result<(Vec<usize>, usize), Box<dyn std::error::Error>> {
+    let mut buf = vec![0u8; BUFFER_SIZE];
+    reader.read(&mut buf).await?;
+
+    let mut ints = Vec::new();
+    let mut cur_num: usize = extra_num;
+
+    for chr in buf {
+        if chr == b'\n' {
+            ints.push(cur_num);
+            cur_num = 0;
+        } else if chr.is_ascii_digit() {
+            cur_num = cur_num * 10 + (chr - b'0') as usize;
+        } else if chr == 0 {
+            break;
+        } else {
+            return Err(Box::new(IntReadError("Invalid character in index file".to_string())));
+        }
+    }
+
+    Ok((ints, cur_num))
 }
 
 // Merge two BWTs using our algorithm.
 // Paths should be the paths to the extensionless files
-pub fn bwt_merge_disk(bwt0_path: &str, bwt1_path: &str, output_path: &str) {
+pub async fn bwt_merge_disk(bwt0_path: &str, bwt1_path: &str, output_path: &str) -> Result<(), Box<dyn std::error::Error>> {
     // construct character counts array
     let mut counts: [usize; 256] = [0; 256];
-    for (i, line) in std::fs::read_to_string(format!("{}.counts", bwt0_path)).unwrap().lines().enumerate() {
-        counts[i] = line.parse().unwrap();
+
+    let operator = get_operator()?;
+    let mut counts0_reader = get_file_reader(format!("{}.counts", bwt0_path).as_str(), &operator).await?;
+    let mut counts1_reader = get_file_reader(format!("{}.counts", bwt1_path).as_str(), &operator).await?;
+    let mut buf: Vec<u8> = Vec::new();
+    counts0_reader.read_to_end(&mut buf).await?;
+    let counts0 = buf
+        .split(|&x| x == b'\n')
+        .filter(|x| x.len() > 0)
+        .map(|x| std::str::from_utf8(x).unwrap().parse().unwrap())
+        .collect::<Vec<usize>>();
+    buf.clear();
+    counts1_reader.read_to_end(&mut buf).await?;
+    let counts1 = buf
+        .split(|&x| x == b'\n')
+        .filter(|x| x.len() > 0)
+        .map(|x| std::str::from_utf8(x).unwrap().parse().unwrap())
+        .collect::<Vec<usize>>();
+
+    assert!(counts0.len() == 256 && counts1.len() == 256, "Invalid counts file");
+    for i in 0..256 {
+        counts[i] = counts0[i] + counts1[i];
     }
-    let num_newlines = counts[b'\n' as usize];
-    for (i, line) in std::fs::read_to_string(format!("{}.counts", bwt1_path)).unwrap().lines().enumerate() {
-        counts[i] += line.parse::<usize>().unwrap();
-    }
+    let num_newlines = counts0[b'\n' as usize];
 
     // get bwt file paths
     let bwt0_file_path = format!("{}.bwt", bwt0_path);
     let bwt1_file_path = format!("{}.bwt", bwt1_path);
-    let interleave = compute_interleave_disk(bwt0_file_path.as_str(), bwt1_file_path.as_str(), &counts);
+
+    let mut bwt0_reader = get_file_reader(bwt0_file_path.as_str(), &operator).await?;
+    let mut bwt1_reader = get_file_reader(bwt1_file_path.as_str(), &operator).await?;
+    let bwt0_len = read_file_size(bwt0_file_path.as_str(), &operator).await?;
+    let bwt1_len = read_file_size(bwt1_file_path.as_str(), &operator).await?;
+
+    let start = std::time::Instant::now();
+    let interleave = compute_interleave(&mut bwt0_reader, &mut bwt1_reader, (bwt0_len, bwt1_len), &counts).await?;
+    let duration = start.elapsed();
+    println!("interleave time: {:?}", duration);
 
     // construct bwt
+    bwt0_reader.seek(std::io::SeekFrom::Start(0)).await?;
+    bwt1_reader.seek(std::io::SeekFrom::Start(0)).await?;
+    let mut bwt0 = vec![0u8; BUFFER_SIZE];
+    let mut bwt1 = vec![0u8; BUFFER_SIZE];
+    bwt0_reader.read(&mut bwt0).await?;
+    bwt1_reader.read(&mut bwt1).await?;
 
-    // create bufreaders and bufwriters
-    let mut bwt0_reader = std::io::BufReader::with_capacity(BUFFER_SIZE, File::open(bwt0_file_path).unwrap());
-    let mut bwt1_reader = std::io::BufReader::with_capacity(BUFFER_SIZE, File::open(bwt1_file_path).unwrap());
-    let mut bwt0 = bwt0_reader.fill_buf().unwrap();
-    let mut bwt1 = bwt1_reader.fill_buf().unwrap();
+    // read line index
+    let line_ind0_path = format!("{}.index", bwt0_path);
+    let line_ind1_path = format!("{}.index", bwt1_path);
+    let mut line_ind0_reader = get_file_reader(line_ind0_path.as_str(), &operator).await?;
+    let mut line_ind1_reader = get_file_reader(line_ind1_path.as_str(), &operator).await?;
+    let (mut line_ind0, mut extra_num0) = read_ints(&mut line_ind0_reader, 0).await?;
+    let (mut line_ind1, mut extra_num1) = read_ints(&mut line_ind1_reader, 0).await?;
+    let mut line_ind0_iter = line_ind0.iter();
+    let mut line_ind1_iter = line_ind1.iter();
 
-    let line_ind0 = std::fs::read_to_string(format!("{}.index", bwt0_path)).unwrap();
-    let line_ind1 = std::fs::read_to_string(format!("{}.index", bwt1_path)).unwrap();
-    let mut line_ind0_iter = line_ind0.lines();
-    let mut line_ind1_iter = line_ind1.lines();
-
-    let mut bwt_writer = std::io::BufWriter::with_capacity(BUFFER_SIZE, File::create(format!("{}.bwt", output_path)).unwrap());
-    let mut line_index_writer = std::io::BufWriter::with_capacity(BUFFER_SIZE, File::create(format!("{}.index", output_path)).unwrap());
+    let output_bwt_path = format!("{}.bwt", output_path);
+    let output_index_path = format!("{}.index", output_path);
+    let mut bwt_output: Vec<u8> = Vec::with_capacity(interleave.len());
+    let mut index_output: Vec<usize> = Vec::with_capacity(interleave.len());
 
     let mut ind0 = 0;
     let mut ind1 = 0;
     
     for i in 0..interleave.len() {
         if interleave[i] {
-            bwt_writer.write(&[bwt1[ind1]]).unwrap();
-            let line_ind = line_ind1_iter.next().unwrap().parse::<usize>().unwrap() + num_newlines;
-            line_index_writer.write(format!("{}\n", line_ind).as_bytes()).unwrap();
-            ind1 += 1;
+            bwt_output.push(bwt1[ind1]);
 
+            let line_ind_opt = line_ind1_iter.next();
+            let line_ind: usize;
+            if line_ind_opt.is_none() {
+                (line_ind1, extra_num1) = read_ints(&mut line_ind1_reader, extra_num1).await?;
+                line_ind1_iter = line_ind1.iter();
+                line_ind = *line_ind1_iter.next().expect("Line index is too short");
+            } else {
+                line_ind = *line_ind_opt.unwrap();
+            }
+            index_output.push(line_ind + num_newlines);
+
+            ind1 += 1;
             if ind1 == BUFFER_SIZE {
-                bwt1_reader.consume(BUFFER_SIZE);
-                bwt1 = bwt1_reader.fill_buf().unwrap();
+                bwt1_reader.read(&mut bwt1).await?;
                 ind1 = 0;
             }
         } else {
-            bwt_writer.write(&[bwt0[ind0]]).unwrap();
-            let line_ind: usize = line_ind0_iter.next().unwrap().parse().unwrap();
-            line_index_writer.write(format!("{}\n", line_ind).as_bytes()).unwrap();
-            ind0 += 1;
+            bwt_output.push(bwt0[ind0]);
 
+            let line_ind_opt = line_ind0_iter.next();
+            let line_ind: usize;
+            if line_ind_opt.is_none() {
+                (line_ind0, extra_num0) = read_ints(&mut line_ind0_reader, extra_num0).await?;
+                line_ind0_iter = line_ind0.iter();
+                line_ind = *line_ind0_iter.next().unwrap();
+            } else {
+                line_ind = *line_ind_opt.unwrap();
+            }
+            index_output.push(line_ind);
+
+            ind0 += 1;
             if ind0 == BUFFER_SIZE {
-                bwt0_reader.consume(BUFFER_SIZE);
-                bwt0 = bwt0_reader.fill_buf().unwrap();
+                bwt0_reader.read(&mut bwt0).await?;
                 ind0 = 0;
             }
         }
     }
 
+    let mut bwt_writer = get_file_writer(output_bwt_path.as_str(), &operator).await?;
+    bwt_writer.write(bwt_output).await?;
+
+    let mut line_index_writer = get_file_writer(output_index_path.as_str(), &operator).await?;
+    let line_index_str = index_output.iter().map(|x| x.to_string()).collect::<Vec<String>>().join("\n") + "\n";
+    line_index_writer.write(line_index_str.into_bytes()).await?;
+
     // write counts
-    std::fs::write(format!("{}.counts", output_path), counts.iter().map(|x| x.to_string()).collect::<Vec<String>>().join("\n")).unwrap();
+    let output_counts_path = format!("{}.counts", output_path);
+    let mut counts_writer = get_file_writer(output_counts_path.as_str(), &operator).await?;
+    for count in counts.iter() {
+        let write_data = format!("{}\n", count).into_bytes();
+        counts_writer.write(write_data).await?;
+    }
+
+    Ok(())
 }
 
-pub fn test_merge_disk(input_path: &str, output_path: &str, test_rebuild: bool) {
+pub async fn test_merge_disk(input_path: &str, output_path: &str, test_rebuild: bool) {
     let mut test_sizes = SIZES[0..SIZES.len()-1].to_vec();
     test_sizes.push(3719388); // full size
+
+    let operator = get_operator().unwrap();
 
     for size in test_sizes.iter() {
         let bwt0_path = format!("{}/{}_0", input_path, size);
@@ -219,14 +344,17 @@ pub fn test_merge_disk(input_path: &str, output_path: &str, test_rebuild: bool) 
 
         // time merge
         let merge_start = std::time::Instant::now();
-        bwt_merge_disk(&bwt0_path, &bwt1_path, &output_path_n);
+        bwt_merge_disk(&bwt0_path, &bwt1_path, &output_path_n).await.unwrap();
         let merge_duration = merge_start.elapsed();
         println!("merge time for size {}: {:?}", size, merge_duration);
 
         if test_rebuild {
             // time full rebuild, including i/o times
             let rebuild_start = std::time::Instant::now();
-            let full_text = std::fs::read(format!("{}/{}_full.txt", input_path, size)).unwrap().to_vec();
+            let path = format!("{}.bwt", output_path_n);
+            let mut reader = get_file_reader(path.as_str(), &operator).await.unwrap();
+            let mut full_text = Vec::new();
+            reader.read_to_end(&mut full_text).await.unwrap();
             let full_bwt = run_bwt(&full_text);
     
             let output_path = format!("{}/{}_merged_naive", output_path, size);

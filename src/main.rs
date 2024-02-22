@@ -32,7 +32,8 @@ struct Cli {
     query: Option<String>,
 }
 
-fn main() {
+#[tokio::main]
+async fn main() {
     let cli = Cli::parse();
 
     if cli.generate {
@@ -44,8 +45,8 @@ fn main() {
 
     if cli.test_disk {
         let input_path = "./data/tests";
-        let output_path = "./data/test_out";
-        bwt_merge::bwt_disk::test_merge_disk(input_path, output_path, cli.rebuild);
+        let output_path = "./data/test_out_new";
+        bwt_merge::bwt_disk::test_merge_disk(input_path, output_path, cli.rebuild).await;
         return;
     }
     
