@@ -1,0 +1,16 @@
+trie build time: 23.476233042s
+compressed size: 31993415
+starting bwt build
+bwt build time: 204.699135959s
+compressed bwt size: 924102053
+
+Test #2 (in release mode)
+trie build time: 1.451466334s
+original trie size: 127435063
+compressed size: 31993415
+starting bwt build
+bwt build time: 53.366314792s
+original bwt size: 245476037
+compressed bwt size: 129552395
+original bwt size, with indices: 1157630290
+compressed bwt size, with indices: 924102053
