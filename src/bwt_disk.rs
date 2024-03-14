@@ -1,3 +1,6 @@
+use std::fs::File;
+use std::io::{BufWriter, Write};
+
 use anyhow::{anyhow, Result};
 use bit_vec::BitVec;
 use opendal::{raw::oio::ReadExt, services::Fs, Error, Operator, Reader};
@@ -299,15 +302,15 @@ pub async fn bwt_merge_disk(bwt0_path: &str, bwt1_path: &str, output_path: &str)
 
     let output_bwt_path = format!("{}.bwt", output_path);
     let output_index_path = format!("{}.index", output_path);
-    let mut bwt_output: Vec<u8> = Vec::with_capacity(interleave.len());
-    let mut index_output: Vec<usize> = Vec::with_capacity(interleave.len());
+    let mut bwt_writer = BufWriter::new(File::create(output_bwt_path.as_str())?);
+    let mut index_writer = BufWriter::new(File::create(output_index_path.as_str())?);
 
     let mut ind0 = 0;
     let mut ind1 = 0;
 
     for i in 0..interleave.len() {
         if interleave[i] {
-            bwt_output.push(bwt1[ind1]);
+            bwt_writer.write(&[bwt1[ind1]])?;
 
             let line_ind_opt = line_ind1_iter.next();
             let line_ind: usize;
@@ -318,7 +321,7 @@ pub async fn bwt_merge_disk(bwt0_path: &str, bwt1_path: &str, output_path: &str)
             } else {
                 line_ind = *line_ind_opt.unwrap();
             }
-            index_output.push(line_ind + num_newlines);
+            writeln!(index_writer, "{}", line_ind + num_newlines)?;
 
             ind1 += 1;
             if ind1 == BUFFER_SIZE {
@@ -326,7 +329,7 @@ pub async fn bwt_merge_disk(bwt0_path: &str, bwt1_path: &str, output_path: &str)
                 ind1 = 0;
             }
         } else {
-            bwt_output.push(bwt0[ind0]);
+            bwt_writer.write(&[bwt0[ind0]])?;
 
             let line_ind_opt = line_ind0_iter.next();
             let line_ind: usize;
@@ -337,7 +340,7 @@ pub async fn bwt_merge_disk(bwt0_path: &str, bwt1_path: &str, output_path: &str)
             } else {
                 line_ind = *line_ind_opt.unwrap();
             }
-            index_output.push(line_ind);
+            writeln!(index_writer, "{}", line_ind)?;
 
             ind0 += 1;
             if ind0 == BUFFER_SIZE {
@@ -346,16 +349,6 @@ pub async fn bwt_merge_disk(bwt0_path: &str, bwt1_path: &str, output_path: &str)
             }
         }
     }
-
-    std::fs::write(output_bwt_path.as_str(), &bwt_output)?;
-
-    let line_index_str = index_output
-        .iter()
-        .map(|x| x.to_string())
-        .collect::<Vec<String>>()
-        .join("\n")
-        + "\n";
-    std::fs::write(output_index_path, line_index_str)?;
 
     // write counts
     let output_counts_path = format!("{}.counts", output_path);
@@ -371,7 +364,7 @@ pub async fn bwt_merge_disk(bwt0_path: &str, bwt1_path: &str, output_path: &str)
 }
 
 pub async fn test_merge_disk(input_path: &str, output_path: &str, test_rebuild: bool) {
-    let mut test_sizes = SIZES[0..SIZES.len() - 1].to_vec();
+    let mut test_sizes: Vec<usize> = vec![];
     test_sizes.push(3719388); // full size
 
     let operator = get_operator().unwrap();
