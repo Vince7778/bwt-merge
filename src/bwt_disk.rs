@@ -364,7 +364,7 @@ pub async fn bwt_merge_disk(bwt0_path: &str, bwt1_path: &str, output_path: &str)
 }
 
 pub async fn test_merge_disk(input_path: &str, output_path: &str, test_rebuild: bool) {
-    let mut test_sizes: Vec<usize> = vec![];
+    let mut test_sizes: Vec<usize> = SIZES[0..SIZES.len() - 1].to_vec();
     test_sizes.push(3719388); // full size
 
     let operator = get_operator().unwrap();
