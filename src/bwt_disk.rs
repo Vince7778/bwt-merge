@@ -147,7 +147,7 @@ async fn compute_interleave(
         bwt0_reader.read(&mut bwt0).await?;
         bwt1_reader.read(&mut bwt1).await?;
 
-        let mut offsets = starts.clone();
+        let mut offsets = starts;
         let mut new_interleave = BitVec::from_elem(interleave.len(), false);
         for i in 0..interleave.len() {
             if interleave[i] {
@@ -242,14 +242,14 @@ pub async fn bwt_merge_disk(bwt0_path: &str, bwt1_path: &str, output_path: &str)
     counts0_reader.read_to_end(&mut buf).await?;
     let counts0 = buf
         .split(|&x| x == b'\n')
-        .filter(|x| x.len() > 0)
+        .filter(|x| !x.is_empty())
         .map(|x| std::str::from_utf8(x).unwrap().parse().unwrap())
         .collect::<Vec<usize>>();
     buf.clear();
     counts1_reader.read_to_end(&mut buf).await?;
     let counts1 = buf
         .split(|&x| x == b'\n')
-        .filter(|x| x.len() > 0)
+        .filter(|x| !x.is_empty())
         .map(|x| std::str::from_utf8(x).unwrap().parse().unwrap())
         .collect::<Vec<usize>>();
 
@@ -310,7 +310,7 @@ pub async fn bwt_merge_disk(bwt0_path: &str, bwt1_path: &str, output_path: &str)
 
     for i in 0..interleave.len() {
         if interleave[i] {
-            bwt_writer.write(&[bwt1[ind1]])?;
+            bwt_writer.write_all(&[bwt1[ind1]])?;
 
             let line_ind_opt = line_ind1_iter.next();
             let line_ind: usize;
@@ -329,7 +329,7 @@ pub async fn bwt_merge_disk(bwt0_path: &str, bwt1_path: &str, output_path: &str)
                 ind1 = 0;
             }
         } else {
-            bwt_writer.write(&[bwt0[ind0]])?;
+            bwt_writer.write_all(&[bwt0[ind0]])?;
 
             let line_ind_opt = line_ind0_iter.next();
             let line_ind: usize;

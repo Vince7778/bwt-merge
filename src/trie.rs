@@ -2,6 +2,10 @@ use std::cmp::{max, min};
 
 use serde::{Deserialize, Serialize};
 
+// extra bits to store in trie
+// in general if you want to merge n tries, you need log2(n) extra bits
+const EXTRA_BITS: usize = 8;
+
 #[derive(Serialize, Deserialize)]
 pub struct BinaryTrieNode {
     pub left: Option<Box<BinaryTrieNode>>,
@@ -21,11 +25,17 @@ impl BinaryTrieNode {
     }
 }
 
+impl Default for BinaryTrieNode {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 // note: it's difficult to support insert on this trie,
 // since we stop storing anything past the LCP
 // so we can't differentiate between two strings that share a prefix after build
 
-pub fn build_binary_trie(strs: &Vec<Vec<u8>>, inds: &Vec<Vec<usize>>) -> BinaryTrieNode {
+pub fn build_binary_trie(strs: &[Vec<u8>], inds: &[Vec<usize>]) -> BinaryTrieNode {
     // big endian
     let get_bit = |stri: usize, i: usize| -> bool {
         let chr = i / 8;
@@ -51,9 +61,9 @@ pub fn build_binary_trie(strs: &Vec<Vec<u8>>, inds: &Vec<Vec<usize>>) -> BinaryT
     // build trie
     let mut root = BinaryTrieNode::new();
     for i in 0..strs.len() {
-        let first_diff_char = min(max(lcp[i], lcp[i + 1]) + 1, strs[i].len() * 8);
+        let node_depth = min(max(lcp[i], lcp[i + 1]) + 1 + EXTRA_BITS, strs[i].len() * 8);
         let mut node = &mut root;
-        for j in 0..first_diff_char {
+        for j in 0..node_depth {
             if !get_bit(i, j) {
                 if node.left.is_none() {
                     node.left = Some(Box::new(BinaryTrieNode::new()));
@@ -79,7 +89,7 @@ pub fn build_binary_trie(strs: &Vec<Vec<u8>>, inds: &Vec<Vec<usize>>) -> BinaryT
 // Query the trie for matching indices
 // Note that if string does not exist it may return results that don't match,
 // but at most one, so you can check manually
-pub fn query_string(root: &BinaryTrieNode, query: &Vec<u8>) -> Vec<usize> {
+pub fn query_string(root: &BinaryTrieNode, query: &[u8]) -> Vec<usize> {
     let get_bit = |i: usize| -> bool {
         let chr = i / 8;
         let bit = 7 - (i % 8);
