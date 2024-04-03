@@ -10,8 +10,7 @@ const EXTRA_BITS: usize = 8;
 pub struct BinaryTrieNode {
     pub left: Option<Box<BinaryTrieNode>>,
     pub right: Option<Box<BinaryTrieNode>>,
-    pub end: bool,
-    pub data: Option<Vec<usize>>,
+    pub data: Vec<usize>,
 }
 
 impl BinaryTrieNode {
@@ -19,8 +18,7 @@ impl BinaryTrieNode {
         BinaryTrieNode {
             left: None,
             right: None,
-            end: false,
-            data: None,
+            data: Vec::new(),
         }
     }
 }
@@ -76,20 +74,21 @@ pub fn build_binary_trie(strs: &[Vec<u8>], inds: &[Vec<usize>]) -> BinaryTrieNod
                 node = node.right.as_mut().unwrap();
             }
         }
-        if node.data.is_none() {
-            node.data = Some(Vec::new());
-        }
-        node.data.as_mut().unwrap().extend(&inds[i]);
-        node.end = true;
+        node.data.extend(&inds[i]);
     }
 
     root
 }
 
+pub fn merge_tries(t1: &BinaryTrieNode, t2: &BinaryTrieNode) -> BinaryTrieNode {
+    let mut output = BinaryTrieNode::new();
+    todo!();
+}
+
 // Query the trie for matching indices
 // Note that if string does not exist it may return results that don't match,
 // but at most one, so you can check manually
-pub fn query_string(root: &BinaryTrieNode, query: &[u8]) -> Vec<usize> {
+pub fn query_string<'a>(root: &'a BinaryTrieNode, query: &[u8]) -> Vec<usize> {
     let get_bit = |i: usize| -> bool {
         let chr = i / 8;
         let bit = 7 - (i % 8);
@@ -100,25 +99,16 @@ pub fn query_string(root: &BinaryTrieNode, query: &[u8]) -> Vec<usize> {
     for i in 0..query.len() * 8 {
         if !get_bit(i) {
             if node.left.is_none() {
-                if node.end {
-                    return node.data.as_ref().unwrap().clone();
-                }
-                return Vec::new();
+                return node.data.clone();
             }
             node = node.left.as_ref().unwrap();
         } else {
             if node.right.is_none() {
-                if node.end {
-                    return node.data.as_ref().unwrap().clone();
-                }
-                return Vec::new();
+                return node.data.clone();
             }
             node = node.right.as_ref().unwrap();
         }
     }
-    if node.end {
-        node.data.as_ref().unwrap().clone()
-    } else {
-        Vec::new()
-    }
+
+    node.data.clone()
 }
