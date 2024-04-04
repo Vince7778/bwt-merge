@@ -6,15 +6,15 @@ use serde::{Deserialize, Serialize};
 // in general if you want to merge n tries, you need log2(n) extra bits
 const EXTRA_BITS: usize = 8;
 
-#[derive(Serialize, Deserialize)]
-pub struct BinaryTrieNode {
-    pub left: Option<Box<BinaryTrieNode>>,
-    pub right: Option<Box<BinaryTrieNode>>,
-    pub data: Vec<usize>,
+#[derive(Serialize, Deserialize, Clone)]
+pub struct BinaryTrieNode<T: Clone> {
+    pub left: Option<Box<BinaryTrieNode<T>>>,
+    pub right: Option<Box<BinaryTrieNode<T>>>,
+    pub data: Vec<T>,
 }
 
-impl BinaryTrieNode {
-    pub fn new() -> BinaryTrieNode {
+impl<T: Clone> BinaryTrieNode<T> {
+    pub fn new() -> BinaryTrieNode<T> {
         BinaryTrieNode {
             left: None,
             right: None,
@@ -23,7 +23,7 @@ impl BinaryTrieNode {
     }
 }
 
-impl Default for BinaryTrieNode {
+impl<T: Clone> Default for BinaryTrieNode<T> {
     fn default() -> Self {
         Self::new()
     }
@@ -33,7 +33,10 @@ impl Default for BinaryTrieNode {
 // since we stop storing anything past the LCP
 // so we can't differentiate between two strings that share a prefix after build
 
-pub fn build_binary_trie(strs: &[Vec<u8>], inds: &[Vec<usize>]) -> BinaryTrieNode {
+/// Builds a binary trie from a list of strings and their corresponding indices.
+/// String list should be sorted.
+/// All strings need a special character at the end.
+pub fn build_binary_trie<T: Clone>(strs: &[Vec<u8>], str_data: &[Vec<T>]) -> BinaryTrieNode<T> {
     // big endian
     let get_bit = |stri: usize, i: usize| -> bool {
         let chr = i / 8;
@@ -74,21 +77,69 @@ pub fn build_binary_trie(strs: &[Vec<u8>], inds: &[Vec<usize>]) -> BinaryTrieNod
                 node = node.right.as_mut().unwrap();
             }
         }
-        node.data.extend(&inds[i]);
+        node.data.extend(str_data[i].clone());
     }
 
     root
 }
 
-pub fn merge_tries(t1: &BinaryTrieNode, t2: &BinaryTrieNode) -> BinaryTrieNode {
+/// Merges two tries into a new trie.
+/// Indices are kept as-is.
+pub fn merge_tries<T: Clone>(t1: &BinaryTrieNode<T>, t2: &BinaryTrieNode<T>) -> BinaryTrieNode<T> {
     let mut output = BinaryTrieNode::new();
-    todo!();
+    output.data.extend(t1.data.clone());
+    output.data.extend(t2.data.clone());
+
+    if t1.left.is_none() {
+        output.left = t2.left.clone();
+    } else if t2.left.is_none() {
+        output.left = t1.left.clone();
+    } else {
+        output.left = Some(Box::new(merge_tries(
+            t1.left.as_ref().unwrap(),
+            t2.left.as_ref().unwrap(),
+        )));
+    }
+
+    if t1.right.is_none() {
+        output.right = t2.right.clone();
+    } else if t2.right.is_none() {
+        output.right = t1.right.clone();
+    } else {
+        output.right = Some(Box::new(merge_tries(
+            t1.right.as_ref().unwrap(),
+            t2.right.as_ref().unwrap(),
+        )));
+    }
+
+    output
+}
+
+// Merge trie t2 into trie t1, consuming t2 (faster than merge_tries since no cloning)
+pub fn extend_trie<T: Clone>(t1: &mut BinaryTrieNode<T>, t2: BinaryTrieNode<T>) {
+    t1.data.extend(t2.data);
+    if t1.left.is_some() {
+        if let Some(t2_left) = t2.left {
+            extend_trie(t1.left.as_mut().unwrap(), *t2_left);
+        }
+    } else {
+        t1.left = t2.left;
+    }
+
+    if t1.right.is_some() {
+        if let Some(t2_right) = t2.right {
+            extend_trie(t1.right.as_mut().unwrap(), *t2_right);
+        }
+    } else {
+        t1.right = t2.right;
+    }
 }
 
 // Query the trie for matching indices
 // Note that if string does not exist it may return results that don't match,
-// but at most one, so you can check manually
-pub fn query_string<'a>(root: &'a BinaryTrieNode, query: &[u8]) -> Vec<usize> {
+// but only a few, so you can check manually
+// Collects all results seen on the way, in order to support merging
+pub fn query_string<T: Clone>(root: &BinaryTrieNode<T>, query: &[u8]) -> Vec<T> {
     let get_bit = |i: usize| -> bool {
         let chr = i / 8;
         let bit = 7 - (i % 8);
@@ -96,19 +147,22 @@ pub fn query_string<'a>(root: &'a BinaryTrieNode, query: &[u8]) -> Vec<usize> {
     };
 
     let mut node = root;
+    let mut results = Vec::new();
     for i in 0..query.len() * 8 {
+        results.extend(node.data.clone());
         if !get_bit(i) {
             if node.left.is_none() {
-                return node.data.clone();
+                break;
             }
             node = node.left.as_ref().unwrap();
         } else {
             if node.right.is_none() {
-                return node.data.clone();
+                break;
             }
             node = node.right.as_ref().unwrap();
         }
     }
 
-    node.data.clone()
+    results.extend(node.data.clone());
+    results
 }
