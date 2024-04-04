@@ -92,7 +92,7 @@ async fn main() {
             let input_inds: Vec<Vec<usize>> = (0..input_lines.len()).map(|x| vec![x]).collect();
 
             let start_time = Instant::now();
-            trie = bwt_merge::trie::build_binary_trie(&input_lines, &input_inds);
+            trie = bwt_merge::trie::BinaryTrieNode::build(&input_lines, &input_inds);
             let trie_duration = start_time.elapsed();
             println!("trie build time: {:?}", trie_duration);
         }
@@ -101,7 +101,7 @@ async fn main() {
             // try a query
             let query_str = cli.query.unwrap();
             let query = query_str.as_bytes().to_vec();
-            let res = bwt_merge::trie::query_string(&trie, &query);
+            let res = trie.query(&query);
             println!("trie res: {:?}", res);
         }
 
