@@ -2,10 +2,6 @@ use std::cmp::{max, min};
 
 use serde::{Deserialize, Serialize};
 
-// extra bits to store in trie
-// in general if you want to merge n tries, you need log2(n) extra bits
-const EXTRA_BITS: usize = 8;
-
 #[derive(Serialize, Deserialize, Clone)]
 pub struct BinaryTrieNode<T: Clone> {
     pub left: Option<Box<BinaryTrieNode<T>>>,
@@ -24,7 +20,17 @@ impl<T: Clone> BinaryTrieNode<T> {
 
     /// Builds a binary trie from a list of strings and their corresponding indices.
     /// String list should be sorted.
+    /// Default extra bits is 8.
     pub fn build(strs: &[Vec<u8>], str_data: &[Vec<T>]) -> BinaryTrieNode<T> {
+        BinaryTrieNode::build_extra(strs, str_data, 8)
+    }
+
+    /// Build, specifying extra bits
+    pub fn build_extra(
+        strs: &[Vec<u8>],
+        str_data: &[Vec<T>],
+        extra_bits: usize,
+    ) -> BinaryTrieNode<T> {
         // big endian
         let get_bit = |stri: usize, i: usize| -> bool {
             let chr = i / 8;
@@ -50,7 +56,7 @@ impl<T: Clone> BinaryTrieNode<T> {
         // build trie
         let mut root = BinaryTrieNode::new();
         for i in 0..strs.len() {
-            let node_depth = min(max(lcp[i], lcp[i + 1]) + 1 + EXTRA_BITS, strs[i].len() * 8);
+            let node_depth = min(max(lcp[i], lcp[i + 1]) + 1 + extra_bits, strs[i].len() * 8);
             let mut node = &mut root;
             for j in 0..node_depth {
                 if !get_bit(i, j) {
@@ -105,16 +111,17 @@ impl<T: Clone> BinaryTrieNode<T> {
         let mut node = self;
         let mut results = Vec::new();
         for i in 0..query.len() * 8 {
-            results.extend(node.data.clone());
             if !get_bit(i) {
                 if node.left.is_none() {
                     break;
                 }
+                results.extend(node.data.clone());
                 node = node.left.as_ref().unwrap();
             } else {
                 if node.right.is_none() {
                     break;
                 }
+                results.extend(node.data.clone());
                 node = node.right.as_ref().unwrap();
             }
         }

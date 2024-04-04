@@ -29,7 +29,8 @@ fn build_and_query() {
 
         for i in actual_inds.iter() {
             println!("query {}, checking {:?} (index {})", query, strs[*i], *i);
-            assert!(res.contains(i));
+            // prevent duplicates
+            assert!(res.iter().filter(|x| *x == i).count() == 1);
         }
     }
 }
@@ -82,11 +83,11 @@ fn merge_and_query() {
         println!("query {}, res: {:?}", query, res);
         for i in actual_inds1.iter() {
             println!("query {}, checking {:?}", query, i);
-            assert!(res.contains(i));
+            assert!(res.iter().filter(|x| *x == i).count() == 1);
         }
         for i in actual_inds2.iter() {
             println!("query {}, checking {:?}", query, i);
-            assert!(res.contains(i));
+            assert!(res.iter().filter(|x| *x == i).count() == 1);
         }
     }
 }
