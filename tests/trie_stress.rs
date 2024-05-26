@@ -2,7 +2,7 @@
 
 use std::{io::Write, time::Instant};
 
-use bwt_merge::trie;
+use bwt_merge::trie::{self, hex_to_u8};
 use rand::{prelude::SliceRandom, rngs::ThreadRng, Rng};
 use serde::Serialize;
 
@@ -10,12 +10,20 @@ const INPUT_FILE: &str = "data/compacted_type_5";
 const QUERY_COUNT: usize = 1000;
 const ALPHABET: &[u8; 16] = b"0123456789abcdef";
 
-fn read_input_file(incl_newline: bool) -> Vec<Vec<u8>> {
-    let input = std::fs::read(INPUT_FILE).unwrap();
-    let mut input = input
-        .split(|&x| x == b'\n')
-        .map(|x| x.to_vec())
-        .collect::<Vec<_>>();
+fn read_input_file(incl_newline: bool, compress_hex: bool) -> Vec<Vec<u8>> {
+    let input_raw = std::fs::read(INPUT_FILE).unwrap();
+    let mut input;
+    if compress_hex {
+        input = input_raw
+            .split(|&x| x == b'\n')
+            .map(|x| hex_to_u8(std::str::from_utf8(x).unwrap()).unwrap())
+            .collect::<Vec<_>>();
+    } else {
+        input = input_raw
+            .split(|&x| x == b'\n')
+            .map(|x| x.to_vec())
+            .collect::<Vec<_>>();
+    }
 
     // append \n
     if incl_newline {
@@ -26,8 +34,8 @@ fn read_input_file(incl_newline: bool) -> Vec<Vec<u8>> {
     input
 }
 
-fn split_input(rng: &mut ThreadRng, incl_newline: bool) -> [Vec<Vec<u8>>; 2] {
-    let input = read_input_file(incl_newline);
+fn split_input(rng: &mut ThreadRng, incl_newline: bool, compress_hex: bool) -> [Vec<Vec<u8>>; 2] {
+    let input = read_input_file(incl_newline, compress_hex);
     let mut input1 = Vec::with_capacity(input.len());
     let mut input2 = Vec::with_capacity(input.len());
     for line in input.into_iter() {
@@ -86,35 +94,47 @@ fn serialize_and_compress<T: Clone + Serialize>(trie: &trie::BinaryTrieNode<T>) 
 #[ignore]
 #[test]
 fn stress_no_newline() {
-    stress_test(false, 8, 1);
+    stress_test(false, 8, 1, false);
+}
+
+#[ignore]
+#[test]
+fn stress_hex() {
+    stress_test(false, 8, 1, true);
+}
+
+#[ignore]
+#[test]
+fn stress_hex_no_extra_bits() {
+    stress_test(false, 0, 1, true);
 }
 
 #[ignore]
 #[test]
 fn stress_newline() {
-    stress_test(true, 8, 1);
+    stress_test(true, 8, 1, false);
 }
 
 #[ignore]
 #[test]
 fn stress_no_extra_bits() {
-    stress_test(true, 0, 1);
+    stress_test(true, 0, 1, false);
 }
 
 #[ignore]
 #[test]
 fn stress_some_extra_bits() {
-    stress_test(true, 4, 1);
+    stress_test(true, 4, 1, false);
 }
 
 #[ignore]
 #[test]
 fn stress_block_size() {
-    stress_test(true, 8, 64);
+    stress_test(true, 8, 64, false);
 }
 
-fn stress_test(incl_newline: bool, extra_bits: usize, block_size: usize) {
-    let input_lines = read_input_file(incl_newline);
+fn stress_test(incl_newline: bool, extra_bits: usize, block_size: usize, compress_hex: bool) {
+    let input_lines = read_input_file(incl_newline, compress_hex);
 
     // use block_size to compress inds
     let inds: Vec<Vec<usize>> = (0..input_lines.len())
@@ -155,30 +175,36 @@ fn stress_test(incl_newline: bool, extra_bits: usize, block_size: usize) {
 #[ignore]
 #[test]
 fn stress_merge_newline() {
-    stress_merge(true, false);
+    stress_merge(true, false, false);
 }
 
 #[ignore]
 #[test]
 fn stress_merge_no_newline() {
-    stress_merge(false, false);
+    stress_merge(false, false, false);
+}
+
+#[ignore]
+#[test]
+fn stress_merge_hex() {
+    stress_merge(false, false, true);
 }
 
 #[ignore]
 #[test]
 fn stress_extend_newline() {
-    stress_merge(true, true);
+    stress_merge(true, true, false);
 }
 
 #[ignore]
 #[test]
 fn stress_extend_no_newline() {
-    stress_merge(false, true);
+    stress_merge(false, true, false);
 }
 
-fn stress_merge(incl_newline: bool, extend: bool) {
+fn stress_merge(incl_newline: bool, extend: bool, compress_hex: bool) {
     let mut rng = rand::thread_rng();
-    let [input1, input2] = split_input(&mut rng, incl_newline);
+    let [input1, input2] = split_input(&mut rng, incl_newline, compress_hex);
     let inds1: Vec<Vec<(usize, bool)>> = (0..input1.len()).map(|x| vec![(x, false)]).collect();
     let inds2: Vec<Vec<(usize, bool)>> = (0..input2.len()).map(|x| vec![(x, true)]).collect();
 

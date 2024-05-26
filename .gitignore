@@ -1,2 +1,6 @@
 /target
 /data
+/.cryo
+ethereum*
+/eth
+*/.DS_Store

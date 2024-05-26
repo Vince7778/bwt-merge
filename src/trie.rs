@@ -1,4 +1,7 @@
-use std::cmp::{max, min};
+use std::{
+    cmp::{max, min},
+    num::ParseIntError,
+};
 
 use serde::{Deserialize, Serialize};
 
@@ -171,4 +174,21 @@ pub fn merge_tries<T: Clone>(t1: &BinaryTrieNode<T>, t2: &BinaryTrieNode<T>) -> 
     }
 
     output
+}
+
+pub fn hex_to_u8(hex: &str) -> Result<Vec<u8>, ParseIntError> {
+    let mut bytes = Vec::new();
+    for i in 0..hex.len() / 2 {
+        let byte = u8::from_str_radix(&hex[i * 2..i * 2 + 2], 16)?;
+        bytes.push(byte);
+    }
+    if hex.len() % 2 == 1 {
+        let byte = u8::from_str_radix(&hex[hex.len() - 1..hex.len()], 16)? * 16;
+        bytes.push(byte);
+    }
+    Ok(bytes)
+}
+
+pub fn compress_hex_strs(strs: &[&str]) -> Result<Vec<Vec<u8>>, ParseIntError> {
+    strs.iter().map(|s| hex_to_u8(s)).collect()
 }
